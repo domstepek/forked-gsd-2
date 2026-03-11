@@ -132,6 +132,12 @@ gsd
 
 Select from 20+ providers — Anthropic, OpenAI, Google, OpenRouter, GitHub Copilot, and more. If you have a Claude Max or Copilot subscription, the OAuth flow handles everything. Otherwise, paste your API key when prompted.
 
+GSD auto-selects a default model after login. To switch models later:
+
+```bash
+/model
+```
+
 ### Use it
 
 Open a terminal in your project and run:

@@ -17,6 +17,21 @@ await runWizardIfNeeded(authStorage)
 const modelRegistry = new ModelRegistry(authStorage)
 const settingsManager = SettingsManager.create(agentDir)
 
+// Auto-select a default model if none is configured.
+// This prevents the "No model configured" error for users who logged in
+// but never explicitly ran /model to pick one.
+if (!settingsManager.getDefaultModel()) {
+  const availableModels = modelRegistry.getAvailable()
+  if (availableModels.length > 0) {
+    // Prefer Anthropic's default (claude-sonnet-4-20250514), then any Anthropic model, then first available
+    const preferred =
+      availableModels.find((m) => m.provider === 'anthropic' && m.id === 'claude-sonnet-4-20250514') ||
+      availableModels.find((m) => m.provider === 'anthropic') ||
+      availableModels[0]
+    settingsManager.setDefaultModelAndProvider(preferred.provider, preferred.id)
+  }
+}
+
 // GSD always uses quiet startup — the gsd extension renders its own branded header
 if (!settingsManager.getQuietStartup()) {
   settingsManager.setQuietStartup(true)
