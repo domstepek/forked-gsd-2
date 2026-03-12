@@ -621,10 +621,12 @@ function validatePreferences(preferences: GSDPreferences): {
       else errors.push("git.snapshots must be a boolean");
     }
     if (g.pre_merge_check !== undefined) {
-      if (typeof g.pre_merge_check === "boolean" || g.pre_merge_check === "auto") {
+      if (typeof g.pre_merge_check === "boolean") {
         git.pre_merge_check = g.pre_merge_check;
+      } else if (typeof g.pre_merge_check === "string" && g.pre_merge_check.trim() !== "") {
+        git.pre_merge_check = g.pre_merge_check.trim();
       } else {
-        errors.push('git.pre_merge_check must be a boolean or "auto"');
+        errors.push("git.pre_merge_check must be a boolean or a non-empty string command");
       }
     }
     if (g.commit_type !== undefined) {

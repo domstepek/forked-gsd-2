@@ -18,6 +18,7 @@
 import { sep } from "node:path";
 
 import { GitServiceImpl } from "./git-service.ts";
+import { loadEffectiveGSDPreferences } from "./preferences.ts";
 
 // Re-export MergeSliceResult from the canonical source (D014 — type-only re-export)
 export type { MergeSliceResult } from "./git-service.ts";
@@ -34,7 +35,9 @@ let cachedBasePath: string | null = null;
  */
 function getService(basePath: string): GitServiceImpl {
   if (cachedService === null || cachedBasePath !== basePath) {
-    cachedService = new GitServiceImpl(basePath, {});
+    const loaded = loadEffectiveGSDPreferences();
+    const gitPrefs = loaded?.preferences?.git ?? {};
+    cachedService = new GitServiceImpl(basePath, gitPrefs);
     cachedBasePath = basePath;
   }
   return cachedService;

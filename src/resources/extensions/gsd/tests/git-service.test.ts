@@ -11,6 +11,7 @@ import {
   type GitPreferences,
   type CommitOptions,
   type MergeSliceResult,
+  type PreMergeCheckResult,
 } from "../git-service.ts";
 
 let passed = 0;
@@ -879,6 +880,363 @@ async function main(): Promise<void> {
     assert(threw, "mergeSliceToMain throws when no commits ahead");
 
     rmSync(repo, { recursive: true, force: true });
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // S05: Enhanced features — merge guards, snapshots, auto-push, rich commits
+  // ═══════════════════════════════════════════════════════════════════════
+
+  // ─── createSnapshot: prefs enabled ─────────────────────────────────────
+
+  console.log("\n=== createSnapshot: enabled ===");
+
+  {
+    const repo = initBranchTestRepo();
+    const svc = new GitServiceImpl(repo, { snapshots: true });
+
+    // Create a slice branch with a commit
+    svc.ensureSliceBranch("M001", "S01");
+    createFile(repo, "src/snap.ts", "snapshot me");
+    svc.commit({ message: "snapshot test commit" });
+
+    // Create snapshot ref for this slice branch
+    svc.createSnapshot("gsd/M001/S01");
+
+    // Verify ref exists under refs/gsd/snapshots/
+    const refs = run("git for-each-ref refs/gsd/snapshots/", repo);
+    assert(refs.includes("refs/gsd/snapshots/gsd/M001/S01/"), "snapshot ref created under refs/gsd/snapshots/");
+
+    rmSync(repo, { recursive: true, force: true });
+  }
+
+  // ─── createSnapshot: prefs disabled ────────────────────────────────────
+
+  console.log("\n=== createSnapshot: disabled ===");
+
+  {
+    const repo = initBranchTestRepo();
+    const svc = new GitServiceImpl(repo, { snapshots: false });
+
+    svc.ensureSliceBranch("M001", "S01");
+    createFile(repo, "src/no-snap.ts", "no snapshot");
+    svc.commit({ message: "no snapshot commit" });
+
+    // createSnapshot should be a no-op when disabled
+    svc.createSnapshot("gsd/M001/S01");
+
+    const refs = run("git for-each-ref refs/gsd/snapshots/", repo);
+    assertEq(refs, "", "no snapshot ref created when prefs.snapshots is false");
+
+    rmSync(repo, { recursive: true, force: true });
+  }
+
+  // ─── runPreMergeCheck: pass ────────────────────────────────────────────
+
+  console.log("\n=== runPreMergeCheck: pass ===");
+
+  {
+    const repo = initBranchTestRepo();
+    // Create package.json with passing test script
+    createFile(repo, "package.json", JSON.stringify({
+      name: "test-pass",
+      scripts: { test: "node -e 'process.exit(0)'" },
+    }));
+    run("git add -A", repo);
+    run("git commit -m 'add package.json'", repo);
+
+    const svc = new GitServiceImpl(repo, { pre_merge_check: true });
+    const result: PreMergeCheckResult = svc.runPreMergeCheck();
+
+    assertEq(result.passed, true, "runPreMergeCheck returns passed:true when tests pass");
+    assert(!result.skipped, "runPreMergeCheck is not skipped when enabled");
+
+    rmSync(repo, { recursive: true, force: true });
+  }
+
+  // ─── runPreMergeCheck: fail ────────────────────────────────────────────
+
+  console.log("\n=== runPreMergeCheck: fail ===");
+
+  {
+    const repo = initBranchTestRepo();
+    // Create package.json with failing test script
+    createFile(repo, "package.json", JSON.stringify({
+      name: "test-fail",
+      scripts: { test: "node -e 'process.exit(1)'" },
+    }));
+    run("git add -A", repo);
+    run("git commit -m 'add failing package.json'", repo);
+
+    const svc = new GitServiceImpl(repo, { pre_merge_check: true });
+    const result: PreMergeCheckResult = svc.runPreMergeCheck();
+
+    assertEq(result.passed, false, "runPreMergeCheck returns passed:false when tests fail");
+    assert(!result.skipped, "runPreMergeCheck is not skipped when enabled");
+
+    rmSync(repo, { recursive: true, force: true });
+  }
+
+  // ─── runPreMergeCheck: disabled ────────────────────────────────────────
+
+  console.log("\n=== runPreMergeCheck: disabled ===");
+
+  {
+    const repo = initBranchTestRepo();
+    createFile(repo, "package.json", JSON.stringify({
+      name: "test-disabled",
+      scripts: { test: "node -e 'process.exit(1)'" },
+    }));
+    run("git add -A", repo);
+    run("git commit -m 'add package.json'", repo);
+
+    const svc = new GitServiceImpl(repo, { pre_merge_check: false });
+    const result: PreMergeCheckResult = svc.runPreMergeCheck();
+
+    assertEq(result.skipped, true, "runPreMergeCheck skipped when pre_merge_check is false");
+    assertEq(result.passed, true, "runPreMergeCheck returns passed:true when skipped (no block)");
+
+    rmSync(repo, { recursive: true, force: true });
+  }
+
+  // ─── runPreMergeCheck: custom command ──────────────────────────────────
+
+  console.log("\n=== runPreMergeCheck: custom command ===");
+
+  {
+    const repo = initBranchTestRepo();
+    // Custom command string overrides auto-detection
+    const svc = new GitServiceImpl(repo, { pre_merge_check: "node -e 'process.exit(0)'" });
+    const result: PreMergeCheckResult = svc.runPreMergeCheck();
+
+    assertEq(result.passed, true, "runPreMergeCheck passes with custom command that exits 0");
+    assert(!result.skipped, "custom command is not skipped");
+
+    rmSync(repo, { recursive: true, force: true });
+  }
+
+  // ─── Rich commit message ──────────────────────────────────────────────
+
+  console.log("\n=== mergeSliceToMain: rich commit message ===");
+
+  {
+    const repo = initBranchTestRepo();
+    const svc = new GitServiceImpl(repo, { pre_merge_check: false });
+
+    svc.ensureSliceBranch("M001", "S01");
+
+    // Make 3 distinct commits on the slice branch
+    createFile(repo, "src/auth.ts", "export const auth = true;");
+    svc.commit({ message: "add auth module" });
+
+    createFile(repo, "src/login.ts", "export const login = true;");
+    svc.commit({ message: "add login page" });
+
+    createFile(repo, "src/session.ts", "export const session = true;");
+    svc.commit({ message: "add session handling" });
+
+    svc.switchToMain();
+    const result = svc.mergeSliceToMain("M001", "S01", "Implement user authentication");
+
+    // Inspect the full commit body on main
+    const commitBody = run("git log -1 --format=%B", repo);
+
+    // Rich commit should have the subject line
+    assert(commitBody.includes("feat(M001/S01): Implement user authentication"),
+      "rich commit has conventional subject line");
+
+    // Rich commit body should include task list with commit subjects
+    assert(commitBody.includes("add auth module"),
+      "rich commit body includes first commit subject");
+    assert(commitBody.includes("add login page"),
+      "rich commit body includes second commit subject");
+    assert(commitBody.includes("add session handling"),
+      "rich commit body includes third commit subject");
+
+    // Rich commit body should include Branch: line for forensics
+    assert(commitBody.includes("Branch:"),
+      "rich commit body includes Branch: line");
+    assert(commitBody.includes("gsd/M001/S01"),
+      "rich commit body Branch: line includes slice branch name");
+
+    rmSync(repo, { recursive: true, force: true });
+  }
+
+  // ─── Auto-push: enabled ───────────────────────────────────────────────
+
+  console.log("\n=== Auto-push: enabled ===");
+
+  {
+    // Create a bare remote repo
+    const bareDir = mkdtempSync(join(tmpdir(), "gsd-git-bare-"));
+    run("git init --bare -b main", bareDir);
+
+    // Create local repo and add the bare as remote
+    const repo = initBranchTestRepo();
+    run(`git remote add origin ${bareDir}`, repo);
+    run("git push -u origin main", repo);
+
+    const svc = new GitServiceImpl(repo, { auto_push: true, pre_merge_check: false });
+
+    svc.ensureSliceBranch("M001", "S01");
+    createFile(repo, "src/pushed.ts", "export const pushed = true;");
+    svc.commit({ message: "work to push" });
+
+    svc.switchToMain();
+    svc.mergeSliceToMain("M001", "S01", "Add pushed feature");
+
+    // Verify the remote has the merge commit
+    const remoteLog = run(`git --git-dir=${bareDir} log --oneline -1`, bareDir);
+    assert(remoteLog.includes("Add pushed feature"),
+      "auto-push: remote has the merge commit when auto_push is true");
+
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(bareDir, { recursive: true, force: true });
+  }
+
+  // ─── Auto-push: disabled ──────────────────────────────────────────────
+
+  console.log("\n=== Auto-push: disabled ===");
+
+  {
+    const bareDir = mkdtempSync(join(tmpdir(), "gsd-git-bare-"));
+    run("git init --bare -b main", bareDir);
+
+    const repo = initBranchTestRepo();
+    run(`git remote add origin ${bareDir}`, repo);
+    run("git push -u origin main", repo);
+
+    // auto_push explicitly false (or omitted — same behavior)
+    const svc = new GitServiceImpl(repo, { auto_push: false, pre_merge_check: false });
+
+    svc.ensureSliceBranch("M001", "S01");
+    createFile(repo, "src/not-pushed.ts", "export const notPushed = true;");
+    svc.commit({ message: "work not pushed" });
+
+    svc.switchToMain();
+    svc.mergeSliceToMain("M001", "S01", "Add unpushed feature");
+
+    // Remote should NOT have the new merge commit — still at the initial push
+    const remoteLog = run(`git --git-dir=${bareDir} log --oneline`, bareDir);
+    assert(!remoteLog.includes("Add unpushed feature"),
+      "auto-push: remote does NOT have merge commit when auto_push is false");
+
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(bareDir, { recursive: true, force: true });
+  }
+
+  // ─── Remote fetch before branching: with remote ────────────────────────
+
+  console.log("\n=== Remote fetch: with remote ===");
+
+  {
+    const bareDir = mkdtempSync(join(tmpdir(), "gsd-git-bare-"));
+    run("git init --bare -b main", bareDir);
+
+    const repo = initBranchTestRepo();
+    run(`git remote add origin ${bareDir}`, repo);
+    run("git push -u origin main", repo);
+
+    // Add a commit to the remote via a temporary clone
+    const cloneDir = mkdtempSync(join(tmpdir(), "gsd-git-clone-"));
+    run(`git clone ${bareDir} ${cloneDir}`, cloneDir);
+    run("git config user.name 'Remote Dev'", cloneDir);
+    run("git config user.email 'remote@example.com'", cloneDir);
+    createFile(cloneDir, "remote-file.txt", "from remote");
+    run("git add -A", cloneDir);
+    run("git commit -m 'remote commit'", cloneDir);
+    run("git push origin main", cloneDir);
+
+    // ensureSliceBranch should fetch before creating the branch — no crash
+    const svc = new GitServiceImpl(repo);
+    let noError = true;
+    try {
+      svc.ensureSliceBranch("M001", "S01");
+    } catch {
+      noError = false;
+    }
+    assert(noError, "ensureSliceBranch succeeds when remote has new commits (fetch runs)");
+
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(bareDir, { recursive: true, force: true });
+    rmSync(cloneDir, { recursive: true, force: true });
+  }
+
+  // ─── Remote fetch before branching: without remote ─────────────────────
+
+  console.log("\n=== Remote fetch: without remote ===");
+
+  {
+    const repo = initBranchTestRepo();
+    // No remote configured — ensureSliceBranch should not crash
+    const svc = new GitServiceImpl(repo);
+
+    let noError = true;
+    try {
+      svc.ensureSliceBranch("M001", "S01");
+    } catch {
+      noError = false;
+    }
+    assert(noError, "ensureSliceBranch succeeds when no remote is configured");
+    assertEq(svc.getCurrentBranch(), "gsd/M001/S01", "branch created even without remote");
+
+    rmSync(repo, { recursive: true, force: true });
+  }
+
+  // ─── Facade prefs: mergeSliceToMain creates snapshot when prefs set ────
+
+  console.log("\n=== Facade prefs: snapshot via merge with prefs ===");
+
+  {
+    const repo = initBranchTestRepo();
+    // Simulate facade behavior: GitServiceImpl with snapshots:true should
+    // create a snapshot ref during mergeSliceToMain
+    const svc = new GitServiceImpl(repo, { snapshots: true, pre_merge_check: false });
+
+    svc.ensureSliceBranch("M001", "S01");
+    createFile(repo, "src/facade-test.ts", "facade");
+    svc.commit({ message: "facade test commit" });
+
+    svc.switchToMain();
+    svc.mergeSliceToMain("M001", "S01", "Facade snapshot test");
+
+    // After merge, a snapshot ref should exist (created before merge)
+    const refs = run("git for-each-ref refs/gsd/snapshots/", repo);
+    assert(refs.includes("refs/gsd/snapshots/"), "mergeSliceToMain creates snapshot when prefs.snapshots is true");
+    assert(refs.includes("gsd/M001/S01"), "snapshot ref references the slice branch name");
+
+    rmSync(repo, { recursive: true, force: true });
+  }
+
+  // ─── Facade prefs: no snapshot when prefs omit snapshots ───────────────
+
+  console.log("\n=== Facade prefs: no snapshot when prefs omit snapshots ===");
+
+  {
+    const repo = initBranchTestRepo();
+    // Default prefs — snapshots not enabled
+    const svc = new GitServiceImpl(repo, { pre_merge_check: false });
+
+    svc.ensureSliceBranch("M001", "S01");
+    createFile(repo, "src/no-facade-snap.ts", "no facade snap");
+    svc.commit({ message: "no facade snapshot" });
+
+    svc.switchToMain();
+    svc.mergeSliceToMain("M001", "S01", "No snapshot test");
+
+    // No snapshot ref should exist
+    const refs = run("git for-each-ref refs/gsd/snapshots/", repo);
+    assertEq(refs, "", "no snapshot ref when snapshots pref is not set");
+
+    rmSync(repo, { recursive: true, force: true });
+  }
+
+  // ─── PreMergeCheckResult type export compile check ─────────────────────
+
+  console.log("\n=== PreMergeCheckResult type export ===");
+
+  {
+    const _checkResult: PreMergeCheckResult = { passed: true, skipped: false };
+    assert(true, "PreMergeCheckResult type exported and usable");
   }
 
   console.log(`\nResults: ${passed} passed, ${failed} failed`);

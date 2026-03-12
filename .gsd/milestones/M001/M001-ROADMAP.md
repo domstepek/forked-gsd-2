@@ -64,7 +64,7 @@ This milestone is complete only when all are true:
 - [x] **S04: Remove git commands from prompts** `risk:low` `depends:[S02]`
   > After this: execute-task.md, complete-slice.md, replan-slice.md, complete-milestone.md contain no raw git commands. worktree-merge.md unchanged. Verified by grep.
 
-- [ ] **S05: Enhanced features — merge guards, snapshots, auto-push, rich commits** `risk:medium` `depends:[S02]`
+- [x] **S05: Enhanced features — merge guards, snapshots, auto-push, rich commits** `risk:medium` `depends:[S02]`
   > After this: Pre-merge verification auto-detects test runners and blocks broken merges. Snapshot refs created before merges (visible via `git for-each-ref refs/gsd/snapshots/`). auto_push preference pushes main after merge. Squash commits include task lists. Remote fetch before branching when remote exists. All verified by unit tests.
 
 - [ ] **S06: Cleanup and archive** `risk:low` `depends:[S05]`
