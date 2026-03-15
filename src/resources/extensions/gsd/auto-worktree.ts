@@ -8,7 +8,7 @@
 
 import { existsSync, readFileSync, realpathSync, utimesSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { execSync } from "node:child_process";
+import { execSync, execFileSync } from "node:child_process";
 import {
   createWorktree,
   removeWorktree,
@@ -308,7 +308,7 @@ export function mergeSliceToMilestone(
   // Merge --no-ff (with self-healing retry for transient failures)
   try {
     withMergeHeal(cwd, () => {
-      execSync(`git merge --no-ff -m "${message.replace(/"/g, '\\"')}" ${sliceBranch}`, {
+      execFileSync("git", ["merge", "--no-ff", "-m", message, sliceBranch], {
         cwd,
         stdio: ["ignore", "pipe", "pipe"],
         encoding: "utf-8",
@@ -361,7 +361,8 @@ function autoCommitDirtyState(cwd: string): boolean {
       encoding: "utf-8",
     }).trim();
     if (!status) return false;
-    execSync('git add -A && git commit -m "chore: auto-commit before milestone merge"', {
+    execFileSync("git", ["add", "-A"], { cwd, stdio: "pipe" });
+    execFileSync("git", ["commit", "-m", "chore: auto-commit before milestone merge"], {
       cwd,
       stdio: ["ignore", "pipe", "pipe"],
       encoding: "utf-8",
@@ -451,7 +452,7 @@ export function mergeMilestoneToMain(
   // 8. Commit (handle nothing-to-commit gracefully)
   let nothingToCommit = false;
   try {
-    execSync(`git commit -m ${JSON.stringify(commitMessage)}`, {
+    execFileSync("git", ["commit", "-m", commitMessage], {
       cwd: originalBasePath_,
       stdio: ["ignore", "pipe", "pipe"],
       encoding: "utf-8",
