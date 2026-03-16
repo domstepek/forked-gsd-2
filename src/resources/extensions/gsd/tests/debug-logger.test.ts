@@ -1,5 +1,4 @@
 // Debug Logger Tests
-// Copyright (c) 2026 Jeremy McSpadden <jeremy@fluxlabs.net>
 
 import { test } from 'node:test';
 import assert from 'node:assert';
