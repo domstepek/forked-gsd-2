@@ -1,6 +1,5 @@
 
 # ── GSD project state (development-only, lives in worktree branches) ──
-.gsd/
 
 .claude/
 RELEASE-GUIDE.md
@@ -50,3 +49,16 @@ AGENTS.md
 .bg-shell/
 TODOS.md
 .planning/
+
+# ── GSD baseline (auto-generated) ──
+.gsd/activity/
+.gsd/runtime/
+.gsd/worktrees/
+.gsd/auto.lock
+.gsd/metrics.json
+.gsd/completed-units.json
+.gsd/STATE.md
+.gsd/gsd.db
+.gsd/DISCUSSION-MANIFEST.json
+.gsd/milestones/**/*-CONTINUE.md
+.gsd/milestones/**/continue.md
