@@ -413,6 +413,13 @@ async function runHeadlessOnce(options: HeadlessOptions, restartCount: number): 
     process.exit(1)
   }
 
+  // Query: read-only state snapshot, no RPC child needed
+  if (options.command === 'query') {
+    const { handleQuery } = await import('./headless-query.js')
+    const result = await handleQuery(process.cwd())
+    return { exitCode: result.exitCode, interrupted: false }
+  }
+
   // Resolve CLI path for the child process
   const cliPath = process.env.GSD_BIN_PATH || process.argv[1]
   if (!cliPath) {
