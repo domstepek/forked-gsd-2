@@ -389,7 +389,10 @@ export function detectProjectSignals(basePath: string): ProjectSignals {
 
   for (const file of PROJECT_FILES) {
     if (detectedFiles.includes(file) || ROOT_ONLY_PROJECT_FILES.has(file)) continue;
-    if (scannedFiles.some((scannedFile) => matchesProjectFileMarker(scannedFile, file))) {
+    const hasMatch = file === "requirements.txt"
+      ? scannedFiles.some(isPythonRequirementsFile)
+      : scannedFiles.some((scannedFile) => matchesProjectFileMarker(scannedFile, file));
+    if (hasMatch) {
       pushUnique(detectedFiles, file);
       if (!primaryLanguage && LANGUAGE_MAP[file]) {
         primaryLanguage = LANGUAGE_MAP[file];
@@ -428,7 +431,7 @@ export function detectProjectSignals(basePath: string): ProjectSignals {
   // Python framework detection — scan dependency files for framework-specific packages.
   // Adds synthetic markers (e.g. "dep:fastapi") so skill catalog matchFiles can reference them.
   const dependencyFiles = scannedFiles.filter((file) =>
-    file.endsWith("requirements.txt") || file.endsWith("pyproject.toml"),
+    isPythonRequirementsFile(file) || file.endsWith("pyproject.toml"),
   );
   if (containsFastapiDependency(basePath, dependencyFiles)) {
     pushUnique(detectedFiles, "dep:fastapi");
@@ -769,12 +772,22 @@ function matchesProjectFileMarker(scannedFile: string, marker: string): boolean 
   );
 }
 
+function isPythonRequirementsFile(relativePath: string): boolean {
+  const normalized = relativePath.replaceAll("\\", "/");
+  const basename = normalized.slice(normalized.lastIndexOf("/") + 1);
+  return (
+    basename === "requirements.txt" ||
+    /^requirements([-.].+)?\.txt$/i.test(basename) ||
+    /\/requirements\/[^/]+\.txt$/i.test(normalized)
+  );
+}
+
 function containsFastapiDependency(basePath: string, relativePaths: string[]): boolean {
   for (const relativePath of relativePaths) {
     try {
       const raw = readBounded(join(basePath, relativePath), 64 * 1024);
       const content = extractDependencyContent(relativePath, raw);
-      if (relativePath.endsWith("requirements.txt")) {
+      if (isPythonRequirementsFile(relativePath)) {
         for (const line of content.split("\n")) {
           if (extractRequirementName(line) === "fastapi") return true;
         }
@@ -833,7 +846,7 @@ function containsSpringBootMarker(
 
   const springBootAliases = new Set<string>();
   const springBootLibraries = new Set<string>();
-  const springBootBundles = new Set<string>();
+  const pendingSpringBootBundles: Array<{ bundleAlias: string; referencedAliases: string[] }> = [];
   for (const relativePath of versionCatalogFiles) {
     try {
       const raw = readBounded(join(basePath, relativePath), 64 * 1024);
@@ -851,17 +864,23 @@ function containsSpringBootMarker(
 
       const bundleRe = /^\s*([A-Za-z0-9_.-]+)\s*=\s*\[([\s\S]*?)\]/gm;
       while ((match = bundleRe.exec(content)) !== null) {
-        const bundleAlias = normalizePluginAlias(`bundles.${match[1]}`);
-        const referencedAliases = match[2]
-          .split(",")
-          .map((part) => normalizePluginAlias(part.replace(/["'\s]/g, "")))
-          .filter(Boolean);
-        if (referencedAliases.some((alias) => springBootLibraries.has(alias))) {
-          springBootBundles.add(bundleAlias);
-        }
+        pendingSpringBootBundles.push({
+          bundleAlias: normalizePluginAlias(`bundles.${match[1]}`),
+          referencedAliases: match[2]
+            .split(",")
+            .map((part) => normalizePluginAlias(part.replace(/["'\s]/g, "")))
+            .filter(Boolean),
+        });
       }
     } catch {
       // unreadable version catalog — continue scanning others
+    }
+  }
+
+  const springBootBundles = new Set<string>();
+  for (const pendingBundle of pendingSpringBootBundles) {
+    if (pendingBundle.referencedAliases.some((alias) => springBootLibraries.has(alias))) {
+      springBootBundles.add(pendingBundle.bundleAlias);
     }
   }
 
