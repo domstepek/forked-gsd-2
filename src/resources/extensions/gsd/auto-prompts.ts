@@ -422,7 +422,8 @@ function resolvePreferredSkillNames(
 function formatSkillActivationBlock(skillNames: string[]): string {
   if (skillNames.length === 0) return "";
   // Use explicit parameter syntax so LLMs pass { skill: "..." } instead of { name: "..." }.
-  // Positional-looking `Skill('name')` caused validation failures — see #2224.
+  // The function-call-like syntax `Skill('name')` led LLMs to infer a positional
+  // parameter name, causing tool validation failures — see #2224.
   const calls = skillNames.map(name => `Call Skill({ skill: '${name}' })`).join('. ');
   return `<skill_activation>${calls}.</skill_activation>`;
 }

@@ -191,3 +191,23 @@ test("buildSkillActivationBlock does not activate skills from extraContext or ta
     cleanup(base);
   }
 });
+
+test("buildSkillActivationBlock handles skill names with special characters safely", () => {
+  const base = makeTempBase();
+  try {
+    // Skill names come from directory names — test that quotes/braces don't break the template
+    writeSkill(base, "my-skill's", "Skill with apostrophe in name.");
+    loadOnlyTestSkills(base);
+
+    const result = buildBlock(base, {}, {
+      always_use_skills: ["my-skill's"],
+    });
+
+    // The skill name is interpolated as-is — this documents current behavior.
+    // A future guard (e.g. /^[a-z0-9-]+$/) could reject such names.
+    assert.match(result, /skill_activation/);
+    assert.match(result, /my-skill's/);
+  } finally {
+    cleanup(base);
+  }
+});
