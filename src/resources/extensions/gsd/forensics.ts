@@ -343,6 +343,9 @@ export async function buildForensicReport(basePath: string): Promise<ForensicRep
 
 const ACTIVITY_FILENAME_RE = /^(\d+)-(.+?)-(.+)\.jsonl$/;
 
+/** Threshold below which iteration cadence is considered rapid (thrashing). */
+const RAPID_ITERATION_THRESHOLD_MS = 5000;
+
 function scanActivityLogs(basePath: string, activeMilestone?: string | null): UnitTrace[] {
   const activityDirs = resolveActivityDirs(basePath, activeMilestone);
   const allTraces: UnitTrace[] = [];
@@ -444,7 +447,7 @@ function scanJournalForForensics(basePath: string): JournalSummary | null {
       flowId: e.flowId,
       eventType: e.eventType,
       rule: e.rule,
-      unitId: (e.data as Record<string, unknown> | undefined)?.unitId as string | undefined,
+      unitId: e.data?.unitId as string | undefined,
     }));
 
     return {
@@ -676,7 +679,7 @@ function detectJournalAnomalies(journal: JournalSummary | null, anomalies: Foren
     const spanMs = newest - oldest;
     if (spanMs > 0 && journal.flowCount > 10) {
       const avgMs = spanMs / journal.flowCount;
-      if (avgMs < 5000) { // Less than 5 seconds per iteration
+      if (avgMs < RAPID_ITERATION_THRESHOLD_MS) {
         anomalies.push({
           type: "journal-rapid-iterations",
           severity: "warning",
