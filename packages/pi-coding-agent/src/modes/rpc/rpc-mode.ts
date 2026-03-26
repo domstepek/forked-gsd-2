@@ -27,6 +27,7 @@ import type {
 	RpcCommand,
 	RpcExtensionUIRequest,
 	RpcExtensionUIResponse,
+	RpcInitResult,
 	RpcResponse,
 	RpcSessionState,
 	RpcSlashCommand,
@@ -37,8 +38,11 @@ export type {
 	RpcCommand,
 	RpcExtensionUIRequest,
 	RpcExtensionUIResponse,
+	RpcInitResult,
+	RpcProtocolVersion,
 	RpcResponse,
 	RpcSessionState,
+	RpcV2Event,
 } from "./rpc-types.js";
 
 /**
@@ -73,6 +77,10 @@ export async function runRpcMode(session: AgentSession): Promise<never> {
 
 	// Shutdown request flag
 	let shutdownRequested = false;
+
+	// v2 protocol version detection state
+	let protocolVersion: 1 | 2 = 1;
+	let protocolLocked = false;
 
 	const embeddedTerminalEnabled = process.env.GSD_WEB_BRIDGE_TUI === "1";
 	const remoteTerminal = embeddedTerminalEnabled
@@ -709,6 +717,15 @@ export async function runRpcMode(session: AgentSession): Promise<never> {
 				return success(id, "terminal_redraw");
 			}
 
+			// =================================================================
+			// v2 Protocol: shutdown
+			// =================================================================
+
+			case "shutdown": {
+				shutdownRequested = true;
+				return success(id, "shutdown");
+			}
+
 			default: {
 				const unknownCommand = command as { type: string; id?: string };
 				return error(unknownCommand.id, unknownCommand.type, `Unknown command: ${unknownCommand.type}`);
@@ -741,7 +758,7 @@ export async function runRpcMode(session: AgentSession): Promise<never> {
 		try {
 			const parsed = JSON.parse(line);
 
-			// Handle extension UI responses
+			// Handle extension UI responses (bypass protocol detection)
 			if (parsed.type === "extension_ui_response") {
 				const response = parsed as RpcExtensionUIResponse;
 				const pending = pendingExtensionRequests.get(response.id);
@@ -752,8 +769,33 @@ export async function runRpcMode(session: AgentSession): Promise<never> {
 				return;
 			}
 
-			// Handle regular commands
 			const command = parsed as RpcCommand;
+
+			// Protocol version detection: first non-UI-response command locks the version
+			if (!protocolLocked) {
+				protocolLocked = true;
+				if (command.type === "init") {
+					protocolVersion = 2;
+					const initResult: RpcInitResult = {
+						protocolVersion: 2,
+						sessionId: session.sessionId,
+						capabilities: {
+							events: ["execution_complete", "cost_update"],
+							commands: ["init", "shutdown", "subscribe"],
+						},
+					};
+					output(success(command.id, "init", initResult));
+					return;
+				}
+				// Non-init first message: lock to v1, fall through to normal handling
+				protocolVersion = 1;
+			} else if (command.type === "init") {
+				// Already locked — reject re-init
+				output(error(command.id, "init", "Protocol version already locked. init must be the first command."));
+				return;
+			}
+
+			// Handle regular commands
 			const response = await handleCommand(command);
 			output(response);
 

@@ -398,6 +398,21 @@ export class RpcClient {
 		return this.getData<{ commands: RpcSlashCommand[] }>(response).commands;
 	}
 
+	/**
+	 * Send a UI response to a pending extension_ui_request.
+	 * Fire-and-forget — no request/response correlation.
+	 */
+	sendUIResponse(id: string, response: { value?: string; values?: string[]; confirmed?: boolean; cancelled?: boolean }): void {
+		if (!this.process?.stdin) {
+			throw new Error("Client not started");
+		}
+		this.process.stdin.write(serializeJsonLine({
+			type: "extension_ui_response",
+			id,
+			...response,
+		}));
+	}
+
 	// =========================================================================
 	// Helpers
 	// =========================================================================
