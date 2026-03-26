@@ -267,7 +267,7 @@ test('Retry reset: idempotent when artifacts already missing', () => {
     const { milestone: mid, slice: sid, task: tid } = parseUnitId(trigger.unitId);
 
     // Uncheck — returns false because no PLAN file
-    const uncheckResult = uncheckTaskInPlan(base, mid, sid, tid);
+    const uncheckResult = uncheckTaskInPlan(base, mid, sid!, tid!);
     assert.ok(!uncheckResult, "uncheck returns false when no PLAN exists");
 
     // Summary does not exist — no crash

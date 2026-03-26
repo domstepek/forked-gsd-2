@@ -447,7 +447,7 @@ test("unitId batch encoding round-trips correctly", () => {
   assert.equal(slice, "S01");
   const plusIdx = batchPart!.indexOf("+");
   assert.ok(plusIdx > 0, "Should have + separator");
-  const batchIds = batchPart.slice(plusIdx + 1).split(",");
+  const batchIds = batchPart!.slice(plusIdx + 1).split(",");
   assert.deepEqual(batchIds, ["T02", "T03", "T05"]);
 });
 
